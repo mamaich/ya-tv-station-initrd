@@ -7,3 +7,4 @@ su-my-init.c - простой аналог su, через сокет /dev/myinit
 musl-gcc -static -s ./myinit.c  -o myinit  
 musl-gcc -static -DDEBUG -s ./myinit.c  -o myinit-dbg  
 musl-gcc -static -s ./su-my-init.c  -o mysu  
+musl-gcc -static -s ./mysudo.c  -o mysudo  
