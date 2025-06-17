@@ -2,18 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/mount.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sched.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <sys/mman.h>
+#include <unistd.h>
 #include <getopt.h>
-
 
 int call_myinit(char* cmd) {
     const char *socket_path = "/dev/myinit_socket";
@@ -22,6 +14,13 @@ int call_myinit(char* cmd) {
 
     // Получаем PID текущего процесса
     pid_t pid = getpid();
+
+    // Получаем текущий рабочий каталог
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        fprintf(stderr, "Failed to get current working directory: %s\n", strerror(errno));
+        return 1;
+    }
 
     // Создаём UNIX-сокет
     sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -42,9 +41,9 @@ int call_myinit(char* cmd) {
         return 1;
     }
 
-    // Формируем сообщение в формате PID<SOH>command
-    char message[1024];
-    snprintf(message, sizeof(message), "%d\001%s", pid, cmd);
+    // Формируем сообщение в формате PID<SOH>command<SOH>cwd
+    char message[2048];
+    snprintf(message, sizeof(message), "%d\001%s\001%s", pid, cmd, cwd);
 
     // Отправляем сообщение
     ssize_t bytes_written = write(sock_fd, message, strlen(message));
@@ -78,7 +77,7 @@ int call_myinit(char* cmd) {
 void print_help(const char *prog_name) {
     printf("Usage: %s [options]\n", prog_name);
     printf("Options:\n");
-    printf("  -c, --command=COMMAND  Execute the specified command using system()\n");
+    printf("  -c, --command=COMMAND  Execute the specified command\n");
     printf("  -h, --help             Display this help message\n");
 }
 
@@ -94,25 +93,19 @@ int main(int argc, char *argv[]) {
         switch (opt) {
             case 'c':
                 if (optarg) {
-                    int result = call_myinit(optarg);
-                    if (result == -1) {
-                        perror("system call failed");
-                        return 1;
-                    }
-                    return result;
+                    return call_myinit(optarg);
                 } else {
                     fprintf(stderr, "Error: --command requires an argument\n");
                     return 1;
                 }
-                break;
             case 'h':
                 print_help(argv[0]);
                 return 0;
             default:
-                /* Ignore unknown options */
-                break;
+                print_help(argv[0]);
+                return 1;
         }
     }
-    
+
     return call_myinit("/system/bin/sh");
 }

@@ -34,7 +34,7 @@ void *handle_client(void *arg) {
 
     DEBUG_PRINT("Received new client connection\n");
 
-    // Читаем команду из сокета (формат: PID<SOH>command)
+    // Читаем команду из сокета (формат: PID<SOH>command<SOH>cwd)
     char buffer[1024];
     ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
     if (bytes_read <= 0) {
@@ -45,16 +45,17 @@ void *handle_client(void *arg) {
     buffer[bytes_read] = '\0';
     DEBUG_PRINT("Received message (%zd bytes): '%s'\n", bytes_read, buffer);
 
-    // Парсим PID и команду, используя SOH (\001) как разделитель
+    // Парсим PID, команду и текущий каталог, используя SOH (\001) как разделитель
     char *pid_str = strtok(buffer, "\001");
-    char *command = strtok(NULL, "");
-    if (!pid_str || !command) {
-        fprintf(stderr, LOG_PREFIX "Invalid message format, expected PID<SOH>command, got pid_str='%s', command='%s'\n",
-                pid_str ? pid_str : "(null)", command ? command : "(null)");
+    char *command = strtok(NULL, "\001");
+    char *cwd = strtok(NULL, "");
+    if (!pid_str || !command || !cwd) {
+        fprintf(stderr, LOG_PREFIX "Invalid message format, expected PID<SOH>command<SOH>cwd, got pid_str='%s', command='%s', cwd='%s'\n",
+                pid_str ? pid_str : "(null)", command ? command : "(null)", cwd ? cwd : "(null)");
         close(client_fd);
         return NULL;
     }
-    DEBUG_PRINT("Parsed PID='%s', command='%s'\n", pid_str, command);
+    DEBUG_PRINT("Parsed PID='%s', command='%s', cwd='%s'\n", pid_str, command, cwd);
 
     // Преобразуем PID в число
     pid_t client_pid = atoi(pid_str);
@@ -108,6 +109,17 @@ void *handle_client(void *arg) {
     }
     DEBUG_PRINT("Opened %s as fd %d\n", fd_path, stderr_fd);
 
+    // Устанавливаем текущий каталог
+    if (chdir(cwd) < 0) {
+        fprintf(stderr, LOG_PREFIX "Failed to change directory to %s: %s\n", cwd, strerror(errno));
+        close(stdin_fd);
+        close(stdout_fd);
+        close(stderr_fd);
+        close(client_fd);
+        return NULL;
+    }
+    DEBUG_PRINT("Changed current directory to %s\n", cwd);
+
     // Выполняем команду через fork и execle
     DEBUG_PRINT("Executing command: %s\n", command);
     pid_t pid = fork();
@@ -122,7 +134,7 @@ void *handle_client(void *arg) {
         signal(SIGTERM, SIG_IGN);
         signal(SIGINT, SIG_IGN);
         signal(SIGPIPE, SIG_IGN);
-        signal(SIGHUP, SIG_IGN); // Добавлено игнорирование SIGHUP
+        signal(SIGHUP, SIG_IGN);
         // Дочерний процесс: перенаправляем потоки и запускаем команду
         if (dup2(stdin_fd, STDIN_FILENO) < 0) {
             fprintf(stderr, LOG_PREFIX "Failed to dup2 stdin: %s\n", strerror(errno));
@@ -165,7 +177,7 @@ void *handle_client(void *arg) {
         execle("/system/bin/sh", "sh", "-c", command, NULL, envp);
         // Если execle возвращает, произошла ошибка
         fprintf(stderr, LOG_PREFIX "execle() failed to invoke /system/bin/sh: %s\n", strerror(errno));
-        _exit(127); // Код 127, как в system() при ошибке вызова оболочки
+        _exit(127);
     } else {
         // Родительский процесс: закрываем дескрипторы
         close(stdin_fd);
