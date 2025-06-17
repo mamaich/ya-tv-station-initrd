@@ -114,8 +114,9 @@ int main(int argc, char *argv[]) {
         {0, 0, 0, 0}
     };
 
-    // Parse options
-    while ((opt = getopt_long(argc, argv, "sinVh", long_options, NULL)) != -1) {
+    // Parse options, stop at first non-option argument
+    optind = 1; // Reset optind for clarity
+    while ((opt = getopt_long(argc, argv, "+sinVh", long_options, NULL)) != -1) {
         switch (opt) {
             case 's':
             case 'i':
@@ -131,7 +132,7 @@ int main(int argc, char *argv[]) {
                 print_help(argv[0]);
                 return 0;
             default:
-                // Ignore other options
+                // Stop parsing at unrecognized option
                 break;
         }
     }
@@ -152,41 +153,24 @@ int main(int argc, char *argv[]) {
     }
 
     // Determine the command to execute
-    char *cmd;
     char command[2048];
     if (shell_mode) {
         // Use SHELL environment variable or default to /system/bin/sh
-        cmd = getenv("SHELL");
+        char *cmd = getenv("SHELL");
         if (!cmd || *cmd == '\0') {
             cmd = "/system/bin/sh";
         }
         snprintf(command, sizeof(command), "%s", cmd);
-    } else if (optind < argc && strcmp(argv[optind], "--") != 0) {
-        // Construct command with arguments
+    } else if (optind < argc) {
+        // Construct command with all remaining arguments
         char *cmd_start = argv[optind];
         size_t len = strlen(cmd_start);
         strncpy(command, cmd_start, sizeof(command) - 1);
         command[sizeof(command) - 1] = '\0';
         size_t pos = len;
 
-        // Append arguments after the command
+        // Append all remaining arguments, including after --
         for (int i = optind + 1; i < argc; i++) {
-            if (strcmp(argv[i], "--") == 0) {
-                i++; // Skip the "--" and include all following args
-                for (; i < argc; i++) {
-                    size_t arg_len = strlen(argv[i]);
-                    if (pos + arg_len + 2 >= sizeof(command)) {
-                        fprintf(stderr, "Command too long\n");
-                        return 1;
-                    }
-                    command[pos] = ' ';
-                    pos++;
-                    strncpy(command + pos, argv[i], sizeof(command) - pos - 1);
-                    pos += arg_len;
-                    command[pos] = '\0';
-                }
-                break;
-            }
             size_t arg_len = strlen(argv[i]);
             if (pos + arg_len + 2 >= sizeof(command)) {
                 fprintf(stderr, "Command too long\n");
