@@ -5,8 +5,6 @@ myinit.c - замена /init в initrd (чтобы он запустился - 
 mysudo.c - простой аналог sudo, через сокет /dev/myinit-socket взаимодействует с myinit чтобы запустить команду или sh с правами root  
 
 .../musl-arm/bin/musl-gcc -static -s ./mysudo.c  -o mysudo  
-
-Yandex TV Station:
 .../musl-arm/bin/musl-gcc -static -s ./myinit.c  -o myinit  
 .../musl-arm/bin/musl-gcc -static -DDEBUG -s ./myinit.c  -o myinit-dbg  
 
